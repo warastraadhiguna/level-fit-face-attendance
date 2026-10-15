@@ -6,7 +6,16 @@ function update(){if(employee){const enrolled=employee.selectedOptions[0]?.datas
 function reset(){image=null;photo.classList.add('d-none');photo.removeAttribute('src');document.querySelector('#placeholder').classList.remove('d-none');update();}employee?.addEventListener('change',reset);
 async function camera(){const message=document.querySelector('#cameraMessage');try{if(!navigator.mediaDevices?.getUserMedia)throw Error('Kamera membutuhkan localhost atau HTTPS.');if(stream)stream.getTracks().forEach(t=>t.stop());stream=null;reset();stream=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:'user',width:{ideal:1280},height:{ideal:960}}});video.srcObject=stream;await video.play();message.classList.add('d-none');update();}catch(e){stream=null;message.classList.remove('d-none');message.textContent='Kamera tidak dapat diakses. Izinkan akses kamera, lalu klik Aktifkan Kamera. '+e.message;update();}}
 video.addEventListener('loadeddata',update);document.querySelector('#retry').addEventListener('click',camera);
-capture.addEventListener('click',()=>{if(!video.videoWidth)return;const canvas=document.createElement('canvas');const scale=Math.min(1,1280/video.videoWidth);canvas.width=Math.round(video.videoWidth*scale);canvas.height=Math.round(video.videoHeight*scale);canvas.getContext('2d').drawImage(video,0,0,canvas.width,canvas.height);image=canvas.toDataURL('image/jpeg',0.9);photo.src=image;photo.classList.remove('d-none');document.querySelector('#placeholder').classList.add('d-none');result.replaceChildren();update();});
+function showCapturedPhoto(){
+    if(!window.matchMedia('(max-width: 991.98px)').matches)return;
+    const target=document.querySelector('#captureResult');
+    if(!target)return;
+    requestAnimationFrame(()=>target.scrollIntoView({
+        behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches?'instant':'smooth',
+        block:'start'
+    }));
+}
+capture.addEventListener('click',()=>{if(!video.videoWidth)return;const canvas=document.createElement('canvas');const scale=Math.min(1,1280/video.videoWidth);canvas.width=Math.round(video.videoWidth*scale);canvas.height=Math.round(video.videoHeight*scale);canvas.getContext('2d').drawImage(video,0,0,canvas.width,canvas.height);image=canvas.toDataURL('image/jpeg',0.9);photo.src=image;photo.classList.remove('d-none');document.querySelector('#placeholder').classList.add('d-none');result.replaceChildren();update();photo.decode().catch(()=>{}).then(showCapturedPhoto);});
 const resultDialog=document.querySelector('#resultDialog');
 resultDialog.addEventListener('click',event=>{
     const bounds=resultDialog.getBoundingClientRect();
