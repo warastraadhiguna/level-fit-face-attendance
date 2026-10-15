@@ -1,0 +1,7 @@
+<!doctype html><html lang="id"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Aktivasi Perangkat Absensi</title><link href="/assets/bootstrap.min.css" rel="stylesheet"><link href="/assets/attendance.css" rel="stylesheet"></head>
+<body><main class="container py-5"><section class="card border-0 p-4 p-md-5 mx-auto" style="max-width:480px">
+<div class="eyebrow mb-2">FACE ATTENDANCE</div><h1 class="h3 fw-bold">Aktivasi perangkat</h1><p class="text-secondary">HP ini belum diaktifkan atau aksesnya sudah dicabut. Minta Owner membuat kode melalui menu Staff → Perangkat Absensi.</p>
+<form method="POST" action="{{ route('device.activate.store') }}">@csrf<label for="code" class="form-label">Kode aktivasi dari Owner</label><input id="code" name="code" class="form-control form-control-lg text-uppercase" placeholder="XXXX-XXXX-XXXX" maxlength="20" required autocomplete="off" autocapitalize="characters" spellcheck="false" aria-describedby="codeHelp">
+@error('code')<p class="text-danger mt-2" role="alert">{{ $message }}</p>@enderror
+<p id="codeHelp" class="small text-secondary mt-2">Kode berlaku 5 menit, hanya sekali pakai. Aktivasi baru menggantikan HP lama pada cabang yang sama.</p><button class="btn btn-primary w-100 mt-2">Aktifkan HP Ini</button></form>
+<p class="small text-secondary mt-4 mb-0">Gunakan browser yang sama untuk absensi. Jangan hapus cookie browser agar aktivasi tetap tersimpan.</p></section></main></body></html>

@@ -1,0 +1,21 @@
+/tools/
+/face-service/.venv/
+/face-service/__pycache__/
+/face-service/app/__pycache__/
+/face-service/models/*.onnx
+/laravel/vendor/
+/laravel/.env
+/laravel/database/*.sqlite
+/laravel/storage/app/public/attendance/
+
+# Local credentials and generated runtime data
+**/.env
+**/.env.*
+!**/.env.example
+**/__pycache__/
+**/*.py[cod]
+**/.pytest_cache/
+**/.venv/
+/laravel/node_modules/
+/laravel/database/*.sqlite*
+/laravel/storage/app/private/attendance/
