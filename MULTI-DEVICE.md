@@ -40,3 +40,7 @@ mengganti cookie browser tersebut. Gunakan browser/HP berbeda untuk beberapa per
 Menu Perangkat Absensi tetap hanya untuk Owner dengan fitur wajah aktif pada
 cabang login. Pembatasan fitur cabang ini hanya mengatur tampilan menu, sesuai
 permintaan; akses controller tetap Owner-only.
+
+Daftar perangkat hanya menampilkan token aktif yang belum kedaluwarsa atau kode
+aktivasi yang masih berlaku. Perangkat dicabut, token kedaluwarsa, dan kode habis
+masa berlaku tidak ditampilkan; tidak perlu menghapus baris database.

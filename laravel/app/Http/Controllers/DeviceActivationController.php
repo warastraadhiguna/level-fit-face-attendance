@@ -3,9 +3,16 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\{Cookie,DB};
 use Illuminate\Validation\ValidationException;
+use App\Services\AttendanceDeviceAccess;
 class DeviceActivationController extends Controller
 {
-    public function index() { return response()->view('device-activation')->header('Cache-Control','no-store, private'); }
+    public function index(Request $request)
+    {
+        if (app(AttendanceDeviceAccess::class)->resolve($request)) {
+            return redirect('/')->header('Cache-Control','no-store, private');
+        }
+        return response()->view('device-activation')->header('Cache-Control','no-store, private');
+    }
     public function store(Request $request)
     {
         abort_unless($request->isSecure() || app()->environment(['local','testing']),400,'Aktivasi perangkat membutuhkan HTTPS.');
@@ -26,6 +33,6 @@ class DeviceActivationController extends Controller
         });
         $cookie=Cookie::make(config('device.cookie'),$token,config('device.lifetime_days')*24*60,'/',null,
             $request->isSecure() || app()->environment('production'),true,false,'strict');
-        return redirect('/')->withCookie($cookie);
+        return redirect('/')->withCookie($cookie)->header('Cache-Control','no-store, private');
     }
 }

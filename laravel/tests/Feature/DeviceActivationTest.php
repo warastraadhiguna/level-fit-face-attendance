@@ -61,6 +61,29 @@ class DeviceActivationTest extends TestCase
         $this->withCookie(config('device.cookie'),$token)->postJson('/attendance',[])->assertForbidden();
         $this->withCookie(config('device.cookie'),str_repeat('d',64))->postJson('/attendance',[])->assertForbidden();
     }
+    public function test_active_device_skips_activation_and_invalid_devices_still_see_form(): void
+    {
+        $token=str_repeat('e',64);
+        DB::table('face_attendance_devices')->insert(['branch_store_id'=>1,'token_hash'=>hash('sha256',$token),'expires_at'=>now('UTC')->addYear()]);
+        $response=$this->withCookie(config('device.cookie'),$token)->get('/activate')->assertRedirect('/');
+        $this->assertStringContainsString('no-store',$response->headers->get('Cache-Control'));
+        DB::table('face_attendance_devices')->update(['expires_at'=>now('UTC')->subSecond()]);
+        $this->get('/activate')->assertOk()->assertSee('Kode aktivasi');
+        DB::table('face_attendance_devices')->update(['expires_at'=>now('UTC')->addYear(),'token_hash'=>null]);
+        $this->get('/activate')->assertOk()->assertSee('Kode aktivasi');
+        $this->withCookie(config('device.cookie'),'forged')->get('/activate')->assertOk();
+    }
+    public function test_denied_redirect_and_json_and_activation_response_are_not_cached(): void
+    {
+        foreach ([$this->get('/')->assertRedirect(route('device.activate')),
+            $this->postJson('/attendance',[])->assertForbidden(),
+            $this->get('/activate')->assertOk()] as $response) {
+            $this->assertStringContainsString('no-store',$response->headers->get('Cache-Control'));
+        }
+        $this->pending();
+        $response=$this->post('/activate',['code'=>'ABCDEF123456'])->assertRedirect('/');
+        $this->assertStringContainsString('no-store',$response->headers->get('Cache-Control'));
+    }
     public function test_https_activation_uses_secure_cookie(): void
     {
         $this->pending();$response=$this->post('https://localhost/activate',['code'=>'ABCDEF123456'])->assertRedirect('/');
