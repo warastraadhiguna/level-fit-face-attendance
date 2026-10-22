@@ -16,7 +16,7 @@ class DeviceActivationTest extends TestCase
     }
     private function pending(string $code='ABCDEF123456'): void
     {
-        DB::table('face_attendance_devices')->updateOrInsert(['branch_store_id'=>1],['pairing_hash'=>hash('sha256',$code),'pairing_label'=>'Front Desk','pairing_expires_at'=>now('UTC')->addMinutes(5),'owner_id'=>7,'owner_name'=>'Owner One','owner_login_branch_store_id'=>1,'owner_login_branch_name'=>'Original Branch','owner_recorded_at'=>now('UTC')]);
+        DB::table('face_attendance_devices')->insert(['branch_store_id'=>1,'pairing_hash'=>hash('sha256',$code),'pairing_label'=>'Front Desk','pairing_expires_at'=>now('UTC')->addMinutes(5),'owner_id'=>7,'owner_name'=>'Owner One','owner_login_branch_store_id'=>1,'owner_login_branch_name'=>'Original Branch','owner_recorded_at'=>now('UTC')]);
     }
     public function test_unactivated_browser_cannot_view_or_submit_attendance_or_photos(): void
     {
@@ -40,17 +40,18 @@ class DeviceActivationTest extends TestCase
         $this->withCookie(config('device.cookie'),$token)->get('/')->assertOk()->assertSee('One');
         $this->postJson('/activate',['code'=>'ABCD-EF12-3456'])->assertStatus(422);
     }
-    public function test_new_activation_replaces_old_device_and_revocation_blocks_it_immediately(): void
+    public function test_new_activation_keeps_old_device_active_and_revocation_is_independent(): void
     {
         $old=str_repeat('a',64);DB::table('face_attendance_devices')->insert(['branch_store_id'=>1,'token_hash'=>hash('sha256',$old),'expires_at'=>now('UTC')->addYear()]);
         $this->withCookie(config('device.cookie'),$old)->get('/')->assertOk();
         $this->pending();$response=$this->post('/activate',['code'=>'ABCDEF123456'])->assertRedirect('/');
         $new=$response->getCookie(config('device.cookie'))->getValue();
-        $this->withCookie(config('device.cookie'),$old)->postJson('/attendance',[])->assertForbidden();
+        $this->withCookie(config('device.cookie'),$old)->get('/')->assertOk();
         $this->withCookie(config('device.cookie'),$new)->get('/')->assertOk();
-        DB::table('face_attendance_devices')->update(['token_hash'=>null]);
+        DB::table('face_attendance_devices')->where('token_hash',hash('sha256',$new))->update(['token_hash'=>null]);
         $this->get('/')->assertRedirect(route('device.activate'));$this->postJson('/attendance',[])->assertForbidden();
-        $this->assertDatabaseCount('face_attendance_devices',1);
+        $this->assertDatabaseCount('face_attendance_devices',2);
+        $this->withCookie(config('device.cookie'),$old)->get('/')->assertOk();
     }
     public function test_expired_pairing_or_expired_device_and_forged_token_are_rejected(): void
     {
