@@ -11,3 +11,6 @@ Jika masih ada tabel face_demo_* lama, lakukan rename terlebih dahulu agar tidak
 membuat tabel kosong paralel. Jangan jalankan installer ulang pada VPS produksi.
 
 Untuk pembaruan beberapa perangkat lihat ../MULTI-DEVICE.md.
+
+Instalasi baru juga memerlukan `2026_11_04_independent_employees.sql` setelah
+`schema-vps.sql`. Lihat ../EMPLOYEES.md. Absensi tidak lagi mengimpor users.

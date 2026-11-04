@@ -2,7 +2,7 @@
 
 namespace App\Services;
 
-use App\Models\Employee;
+use App\Models\FaceProfile;
 use Illuminate\Validation\ValidationException;
 
 class FaceRecognitionService
@@ -16,8 +16,8 @@ class FaceRecognitionService
         if (! is_finite($threshold) || $threshold <= 0 || $threshold > 1 || ! is_finite($margin) || $margin <= 0 || $margin > 2) {
             throw ValidationException::withMessages(['photo' => 'Konfigurasi pengenalan wajah tidak valid.']);
         }
-        $employees = Employee::whereNotNull('face_embedding')->where('face_model', config('face.model'))
-            ->whereIn('source_user_id', \Illuminate\Support\Facades\DB::table('users')->select('id')->where('branch_store_id',$branchId)->whereNull('deleted_at'))->get();
+        $employees = FaceProfile::whereNotNull('face_embedding')->where('face_model', config('face.model'))
+            ->whereIn('source_employee_id', \Illuminate\Support\Facades\DB::table('employees')->select('id')->where('branch_store_id',$branchId)->where('is_active',true)->whereNull('deleted_at'))->get();
         if ($employees->isEmpty()) {
             throw ValidationException::withMessages(['photo' => 'Belum ada wajah pegawai terdaftar di cabang perangkat ini. Daftarkan wajah pada cabang yang sesuai.']);
         }

@@ -3,7 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\Attendance;
-use App\Models\Employee;
+use App\Models\FaceProfile as Employee;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
@@ -35,8 +35,8 @@ class AttendanceTest extends TestCase
     private function employee(string $code = 'EMP001', int $axis = 0): Employee
     {
         $employee=Employee::create(['employee_code' => $code, 'name' => $code === 'EMP001' ? 'Andi' : 'Budi', 'department' => 'Finance', 'face_embedding' => $this->vector($axis), 'face_model' => 'opencv-sface-2021dec']);
-        \Illuminate\Support\Facades\DB::table('users')->insert(['id'=>$employee->id,'branch_store_id'=>1]);
-        $employee->update(['source_user_id'=>$employee->id]);
+        \Illuminate\Support\Facades\DB::table('employees')->insert(['id'=>$employee->id,'branch_store_id'=>1,'employee_code'=>$code,'full_name'=>$employee->name]);
+        $employee->update(['source_employee_id'=>$employee->id]);
         return $employee;
     }
 
@@ -160,13 +160,33 @@ class AttendanceTest extends TestCase
         Http::assertNothingSent();
         $this->assertDatabaseCount('face_attendance_records', 0);
     }
-    public function test_other_branch_and_deleted_user_cannot_be_recognized(): void
+    public function test_other_branch_and_deleted_employee_cannot_be_recognized(): void
     {
         $employee=$this->employee();$this->service();
-        \Illuminate\Support\Facades\DB::table('users')->where('id',$employee->source_user_id)->update(['branch_store_id'=>2]);
+        \Illuminate\Support\Facades\DB::table('employees')->where('id',$employee->source_employee_id)->update(['branch_store_id'=>2]);
         $this->postJson('/attendance',$this->body()+['branch_store_id'=>2])->assertStatus(422);
-        \Illuminate\Support\Facades\DB::table('users')->where('id',$employee->source_user_id)->update(['branch_store_id'=>1,'deleted_at'=>now()]);
+        \Illuminate\Support\Facades\DB::table('employees')->where('id',$employee->source_employee_id)->update(['branch_store_id'=>1,'deleted_at'=>now()]);
         $this->postJson('/attendance',$this->body())->assertStatus(422);
+        $this->assertDatabaseCount('face_attendance_records',0);
+    }
+    public function test_inactive_employee_and_legacy_user_profile_cannot_attend(): void
+    {
+        $employee=$this->employee();
+        \Illuminate\Support\Facades\DB::table('employees')->where('id',$employee->source_employee_id)->update(['is_active'=>false]);
+        Http::fake();$this->postJson('/attendance',$this->body())->assertStatus(422);Http::assertNothingSent();
+        $employee->update(['source_employee_id'=>null,'source_user_id'=>99]);
+        \Illuminate\Support\Facades\DB::table('users')->insert(['id'=>99,'branch_store_id'=>1]);
+        $this->postJson('/attendance',$this->body())->assertStatus(422);Http::assertNothingSent();
+        $this->assertDatabaseCount('face_attendance_records',0);
+    }
+    public function test_employee_deactivation_during_inference_prevents_attendance(): void
+    {
+        $this->employee();
+        Http::fake(function() {
+            \Illuminate\Support\Facades\DB::table('employees')->update(['is_active'=>false]);
+            return Http::response(['success'=>true,'face_count'=>1,'embedding'=>$this->vector(),'model'=>config('face.model')]);
+        });
+        $this->postJson('/attendance',$this->body())->assertForbidden();
         $this->assertDatabaseCount('face_attendance_records',0);
     }
     public function test_revocation_during_inference_prevents_attendance(): void
@@ -195,7 +215,7 @@ class AttendanceTest extends TestCase
         $supriyadi=$this->employee('MILA-SUPRIYADI');
         $candisari->update(['name'=>'Mila','department'=>'CS · Candisari']);
         $supriyadi->update(['name'=>'Mila','department'=>'CS · Supriyadi']);
-        \Illuminate\Support\Facades\DB::table('users')->where('id',$supriyadi->source_user_id)->update(['branch_store_id'=>2]);
+        \Illuminate\Support\Facades\DB::table('employees')->where('id',$supriyadi->source_employee_id)->update(['branch_store_id'=>2]);
         $this->service();
         // Both embeddings are identical: a global comparison would be ambiguous.
         $this->postJson('/attendance',$this->body()+['employee_id'=>$supriyadi->id,'branch_store_id'=>2])->assertOk()->assertJsonPath('name','Mila');

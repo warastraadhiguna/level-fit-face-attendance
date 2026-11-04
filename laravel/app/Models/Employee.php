@@ -1,19 +1,11 @@
 <?php
-
 namespace App\Models;
-
 use Illuminate\Database\Eloquent\Model;
-
+use Illuminate\Database\Eloquent\SoftDeletes;
 class Employee extends Model
 {
-    protected $table = 'face_attendance_employees';
+    use SoftDeletes;
 
-    protected $guarded = [];
-
-    protected $hidden = ['face_embedding'];
-
-    protected function casts(): array
-    {
-        return ['face_embedding' => 'array'];
-    }
+    protected $fillable=['employee_code','branch_store_id','full_name','position','phone','is_active'];
+    protected $casts=['is_active'=>'boolean'];
 }

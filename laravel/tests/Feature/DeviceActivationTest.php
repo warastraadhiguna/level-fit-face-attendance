@@ -22,7 +22,7 @@ class DeviceActivationTest extends TestCase
     {
         Http::fake();$this->get('/')->assertRedirect(route('device.activate'));
         $this->postJson('/attendance',[])->assertForbidden();
-        $employee=\App\Models\Employee::create(['employee_code'=>'ONE','name'=>'One','department'=>'CS']);
+        $employee=\App\Models\FaceProfile::create(['employee_code'=>'ONE','name'=>'One','department'=>'CS']);
         $attendance=\App\Models\Attendance::create(['employee_id'=>$employee->id,'branch_store_id'=>1,'type'=>'check_in','photo_path'=>'attendance/private.jpg','face_verified'=>true,'attended_at'=>now(),'attendance_date'=>now()->toDateString()]);
         $this->getJson('/attendance/photos/'.$attendance->id)->assertForbidden();Http::assertNothingSent();
         $this->get('/activate')->assertOk()->assertSee('Kode aktivasi');

@@ -1,5 +1,7 @@
 # Face Attendance — MySQL level-fit
 
+> Sumber identitas absensi sekarang adalah tabel `employees`, terpisah dari user/trainer. Lihat [EMPLOYEES.md](EMPLOYEES.md) untuk SQL manual dan langkah perpindahan. Penjelasan sinkronisasi user di bagian historis sudah tidak berlaku.
+
 > Pembaruan: satu cabang kini dapat memiliki beberapa perangkat aktif. Lihat [MULTI-DEVICE.md](MULTI-DEVICE.md) untuk SQL manual dan deployment. Penjelasan satu perangkat pada bagian historis di bawah sudah digantikan.
 
 Laravel 12 + Blade + Bootstrap 5 + FastAPI/OpenCV. Absensi memakai pengenalan wajah 1:N tanpa memilih nama. Semua file aplikasi Face Attendance berada dalam folder ini.

@@ -3,7 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Attendance;
-use App\Models\Employee;
+use App\Models\FaceProfile;
 use App\Services\FaceRecognitionService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -42,7 +42,7 @@ class AttendanceController extends Controller
         return $bytes;
     }
 
-    private function check(Employee $employee, string $type, string $date): void
+    private function check(FaceProfile $employee, string $type, string $date): void
     {
         $query = Attendance::where('employee_id', $employee->id)->where('attendance_date', $date);
         if ((clone $query)->where('type', $type)->exists()) {
@@ -66,8 +66,8 @@ class AttendanceController extends Controller
                 $activeDevice=DB::table('face_attendance_devices')->where('id',$device->id)
                     ->where('token_hash',$device->token_hash)->where('expires_at','>',now('UTC'))->lockForUpdate()->first();
                 abort_unless($activeDevice,403,'Akses perangkat telah dicabut. Minta Owner mengaktifkan ulang perangkat.');
-                $sourceUser=DB::table('users')->where('id',$employee->source_user_id)->where('branch_store_id',$device->branch_store_id)->whereNull('deleted_at')->lockForUpdate()->first();
-                abort_unless($sourceUser,403,'Pegawai tidak lagi aktif pada cabang perangkat ini.');
+                $sourceEmployee=DB::table('employees')->where('id',$employee->source_employee_id)->where('branch_store_id',$device->branch_store_id)->where('is_active',true)->whereNull('deleted_at')->lockForUpdate()->first();
+                abort_unless($sourceEmployee,403,'Pegawai tidak lagi aktif pada cabang perangkat ini.');
                 // Serialize attendance writes for this employee before checking daily rules.
                 DB::table('face_attendance_employees')->where('id', $employee->id)->update(['updated_at' => now()]);
                 $time = now();
