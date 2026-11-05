@@ -17,3 +17,6 @@ Instalasi baru juga memerlukan `2026_11_04_independent_employees.sql` setelah
 
 Pendaftaran beberapa contoh juga memerlukan `2026_11_04_face_attendance_samples.sql`.
 Jalankan setelah skema profil dan Data Pegawai tersedia. Lihat ../FACE-SAMPLES.md.
+
+Pengingat ulang tahun di aplikasi utama memerlukan `2026_11_05_employee_birthdays.sql`
+untuk menambahkan tanggal lahir opsional pada employees.

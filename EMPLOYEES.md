@@ -35,3 +35,21 @@ jika pegawai dinonaktifkan ketika foto sedang diproses. Tidak ada sinkronisasi u
 melalui db:seed lagi. Jangan menautkan ID user ke source_employee_id secara massal.
 
 SQL tidak menyentuh users, trainers, data wajah lama, atau riwayat absensi.
+
+## Ulang tahun pegawai
+
+Kolom born (DATE, nullable) menyimpan tanggal lahir. Isi/ubah pada Data Pegawai;
+tanggal tidak valid atau masa depan ditolak. Pegawai lama tetap bernilai NULL,
+tidak diberi tanggal lahir buatan. Tanggal dapat dikosongkan kembali.
+
+Pengingat di atas daftar menampilkan pegawai aktif, belum dihapus sementara, pada
+cabang login: hari ini, besok dan 2 hari lagi. Pengingat mencakup seluruh cabang,
+tidak mengikuti pencarian atau pagination. Tautan membuka edit pegawai terkait.
+Perhitungan tanggal memakai Asia/Jakarta, melintasi pergantian tahun; ulang tahun
+29 Februari diperingati pada 1 Maret jika tahun berjalan bukan tahun kabisat.
+
+Jalankan SQL berikut di database bersama sebelum memperbarui aplikasi utama:
+`deploy/2026_11_05_employee_birthdays.sql`. Jika born sudah ada, lewati ALTER. Migration
+2026_11_05_000001_add_born_to_employees.php tersedia pada kedua aplikasi, cukup
+terapkan sekali pada database bersama. Halaman absensi tidak menampilkan tanggal
+lahir pegawai. Fitur pengingat mengikuti izin Data Pegawai yang sudah ada.
