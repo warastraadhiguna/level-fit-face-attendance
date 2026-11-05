@@ -37,6 +37,7 @@ class AttendanceTest extends TestCase
         $employee=Employee::create(['employee_code' => $code, 'name' => $code === 'EMP001' ? 'Andi' : 'Budi', 'department' => 'Finance', 'face_embedding' => $this->vector($axis), 'face_model' => 'opencv-sface-2021dec']);
         \Illuminate\Support\Facades\DB::table('employees')->insert(['id'=>$employee->id,'branch_store_id'=>1,'employee_code'=>$code,'full_name'=>$employee->name]);
         $employee->update(['source_employee_id'=>$employee->id]);
+        \App\Models\FaceSample::create(['face_profile_id'=>$employee->id,'slot'=>1,'pose'=>'front','face_embedding'=>$this->vector($axis),'face_model'=>config('face.model')]);
         return $employee;
     }
 
@@ -187,6 +188,29 @@ class AttendanceTest extends TestCase
             return Http::response(['success'=>true,'face_count'=>1,'embedding'=>$this->vector(),'model'=>config('face.model')]);
         });
         $this->postJson('/attendance',$this->body())->assertForbidden();
+        $this->assertDatabaseCount('face_attendance_records',0);
+    }
+    public function test_multiple_samples_of_same_employee_do_not_create_ambiguity(): void
+    {
+        Storage::fake('local');$employee=$this->employee();
+        \App\Models\FaceSample::create(['face_profile_id'=>$employee->id,'slot'=>2,'pose'=>'left','face_embedding'=>$this->vector(),'face_model'=>config('face.model')]);
+        $this->employee('OTHER',1);$this->service();
+        $this->postJson('/attendance',$this->body())->assertOk()->assertJsonPath('name','Andi');
+    }
+    public function test_alternative_sample_is_matched_even_if_primary_does_not_match(): void
+    {
+        Storage::fake('local');$employee=$this->employee('EMP001',1);
+        \App\Models\FaceSample::create(['face_profile_id'=>$employee->id,'slot'=>2,'pose'=>'right','face_embedding'=>$this->vector(),'face_model'=>config('face.model')]);
+        $this->service();$this->postJson('/attendance',$this->body())->assertOk()->assertJsonPath('name','Andi');
+    }
+    public function test_deleting_matching_sample_during_inference_prevents_attendance(): void
+    {
+        $this->employee();
+        Http::fake(function() {
+            \Illuminate\Support\Facades\DB::table('face_attendance_samples')->delete();
+            return Http::response(['success'=>true,'face_count'=>1,'embedding'=>$this->vector(),'model'=>config('face.model')]);
+        });
+        $this->postJson('/attendance',$this->body())->assertStatus(422);
         $this->assertDatabaseCount('face_attendance_records',0);
     }
     public function test_revocation_during_inference_prevents_attendance(): void

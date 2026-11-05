@@ -84,6 +84,7 @@ $required = [
  'employees' => ['id','full_name','branch_store_id','is_active','deleted_at'],
  'branch_stores' => ['id','name','face_enrollment_enabled'],
  'face_attendance_employees' => ['id','source_employee_id','face_embedding','face_model'],
+ 'face_attendance_samples' => ['id','face_profile_id','slot','face_embedding','face_model'],
  'face_attendance_records' => ['id','employee_id','branch_store_id','attendance_date'],
  'face_attendance_devices' => ['id','branch_store_id','token_hash','pairing_hash','owner_name','owner_login_branch_store_id','owner_login_branch_name','owner_recorded_at'],
 ];

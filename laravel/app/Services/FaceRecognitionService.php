@@ -16,7 +16,8 @@ class FaceRecognitionService
         if (! is_finite($threshold) || $threshold <= 0 || $threshold > 1 || ! is_finite($margin) || $margin <= 0 || $margin > 2) {
             throw ValidationException::withMessages(['photo' => 'Konfigurasi pengenalan wajah tidak valid.']);
         }
-        $employees = FaceProfile::whereNotNull('face_embedding')->where('face_model', config('face.model'))
+        $employees = FaceProfile::with(['samples'=>fn ($q) => $q->where('face_model',config('face.model'))])
+            ->whereHas('samples',fn ($q) => $q->where('face_model',config('face.model')))
             ->whereIn('source_employee_id', \Illuminate\Support\Facades\DB::table('employees')->select('id')->where('branch_store_id',$branchId)->where('is_active',true)->whereNull('deleted_at'))->get();
         if ($employees->isEmpty()) {
             throw ValidationException::withMessages(['photo' => 'Belum ada wajah pegawai terdaftar di cabang perangkat ini. Daftarkan wajah pada cabang yang sesuai.']);
@@ -28,26 +29,22 @@ class FaceRecognitionService
         }
         $ranked = [];
         foreach ($employees as $employee) {
-            $reference = $employee->face_embedding;
-            if (! is_array($reference) || ! array_is_list($reference) || count($reference) !== 128) {
-                continue;
-            }
-            $dot = 0;
-            $norm = 0;
-            foreach ($reference as $i => $value) {
-                if (! is_numeric($value) || ! is_finite((float) $value)) {
-                    $norm = 0;
-                    break;
+            $bestScore = null;$bestSampleId = null;
+            foreach ($employee->samples as $sample) {
+                $reference = $sample->face_embedding;
+                if (!is_array($reference) || !array_is_list($reference) || count($reference)!==128) continue;
+                $dot=0;$norm=0;
+                foreach ($reference as $i=>$value) {
+                    if (!is_numeric($value) || !is_finite((float)$value)) { $norm=0;break; }
+                    $dot+=$probe[$i]*$value;$norm+=$value*$value;
                 }
-                $dot += $probe[$i] * $value;
-                $norm += $value * $value;
+                if ($norm<=0 || !is_finite($norm)) continue;
+                $score=max(-1.0,min(1.0,$dot/($probeNorm*sqrt($norm))));
+                if ($bestScore===null || $score>$bestScore) { $bestScore=$score;$bestSampleId=$sample->id; }
             }
-            if ($norm <= 0 || ! is_finite($norm)) {
-                continue;
-            }
-            $score = max(-1.0, min(1.0, $dot / ($probeNorm * sqrt($norm))));
-            $ranked[] = ['employee' => $employee, 'score' => $score, 'distance' => sqrt(max(0, 2 - 2 * $score))];
+            if ($bestScore!==null) $ranked[]=['employee'=>$employee,'sample_id'=>$bestSampleId,'score'=>$bestScore,'distance'=>sqrt(max(0,2-2*$bestScore))];
         }
+
         usort($ranked, fn ($a, $b) => $b['score'] <=> $a['score']);
         $best = $ranked[0] ?? null;
         if (! $best || $best['score'] < config('face.recognition_threshold')) {

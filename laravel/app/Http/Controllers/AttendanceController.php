@@ -68,6 +68,8 @@ class AttendanceController extends Controller
                 abort_unless($activeDevice,403,'Akses perangkat telah dicabut. Minta Owner mengaktifkan ulang perangkat.');
                 $sourceEmployee=DB::table('employees')->where('id',$employee->source_employee_id)->where('branch_store_id',$device->branch_store_id)->where('is_active',true)->whereNull('deleted_at')->lockForUpdate()->first();
                 abort_unless($sourceEmployee,403,'Pegawai tidak lagi aktif pada cabang perangkat ini.');
+                $sampleExists=DB::table('face_attendance_samples')->where('id',$data['sample_id'])->where('face_profile_id',$employee->id)->where('face_model',config('face.model'))->exists();
+                if (!$sampleExists) throw ValidationException::withMessages(['photo'=>'Contoh wajah telah dihapus saat pemrosesan. Ambil foto dan coba kembali.']);
                 // Serialize attendance writes for this employee before checking daily rules.
                 DB::table('face_attendance_employees')->where('id', $employee->id)->update(['updated_at' => now()]);
                 $time = now();

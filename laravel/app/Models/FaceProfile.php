@@ -10,6 +10,8 @@ class FaceProfile extends Model
 
     protected $guarded = [];
 
+    public function samples() { return $this->hasMany(FaceSample::class,'face_profile_id'); }
+
     protected $hidden = ['face_embedding'];
 
     protected function casts(): array

@@ -25,14 +25,14 @@ detector = recognizer = None
 
 
 class FaceError(Exception):
-    def __init__(self, message, count=0, status=422):
-        self.message, self.count, self.status = message, count, status
+    def __init__(self, message, count=0, status=422, code='face_error'):
+        self.message, self.count, self.status, self.code = message, count, status, code
 
 
 @app.exception_handler(FaceError)
 async def face_error(_request, error):
     return JSONResponse(status_code=error.status, content={
-        'success': False, 'face_count': error.count, 'message': error.message})
+        'success': False, 'face_count': error.count, 'message': error.message, 'code': error.code})
 
 
 def load_models():
@@ -65,7 +65,28 @@ async def read_image(upload):
     return raw
 
 
-def embedding(raw):
+def check_face_quality(image, face):
+    """Enrollment-only checks on the detected face, not clothing/background."""
+    height, width = image.shape[:2]
+    x, y, w, h = [float(value) for value in face[:4]]
+    if min(w, h) < 80 or w * h / (width * height) < 0.025:
+        raise FaceError('Wajah terlalu kecil. Dekatkan kamera dan ambil foto ulang.', 1, code='face_too_small')
+    if x < 0 or y < 0 or x + w > width or y + h > height:
+        raise FaceError('Wajah terpotong. Pastikan seluruh wajah masuk bingkai.', 1, code='face_clipped')
+    crop = image[int(y):int(y+h), int(x):int(x+w)]
+    gray = cv2.cvtColor(cv2.resize(crop, (160, 160)), cv2.COLOR_BGR2GRAY)
+    brightness = float(np.mean(gray))
+    if brightness < 40:
+        raise FaceError('Wajah terlalu gelap. Gunakan cahaya dari depan.', 1, code='face_too_dark')
+    if brightness > 220:
+        raise FaceError('Wajah terlalu terang. Hindari cahaya langsung yang berlebihan.', 1, code='face_too_bright')
+    sharpness = float(cv2.Laplacian(gray, cv2.CV_64F).var())
+    if sharpness < 25:
+        raise FaceError('Foto wajah buram. Tahan HP agar stabil dan ambil foto ulang.', 1, code='face_blurry')
+    return {'brightness': round(brightness, 1), 'sharpness': round(sharpness, 1)}
+
+
+def embedding(raw, check_quality=False):
     try:
         # Decode only bounded JPEG/PNG inputs. Laravel sends JPEG camera captures.
         if not (raw.startswith(b'\xff\xd8\xff') or raw.startswith(b'\x89PNG\r\n\x1a\n')):
@@ -86,7 +107,9 @@ def embedding(raw):
             _, faces = detector.detect(image)
             count = 0 if faces is None else len(faces)
             if count != 1:
-                raise FaceError('Tidak ada wajah terdeteksi.' if count == 0 else 'Harus tepat satu wajah dalam foto.', count)
+                raise FaceError('Tidak ada wajah terdeteksi.' if count == 0 else 'Harus tepat satu wajah dalam foto.', count, code='no_face' if count == 0 else 'multiple_faces')
+            if check_quality:
+                check_face_quality(image, faces[0])
             aligned = recognizer.alignCrop(image, faces[0])
             vector = recognizer.feature(aligned).flatten().astype(np.float64)
         norm = np.linalg.norm(vector)
@@ -101,11 +124,11 @@ def embedding(raw):
 
 
 @app.post('/face/enroll')
-async def enroll(image: UploadFile = File(...)):
+async def enroll(image: UploadFile = File(...), check_quality: bool = Form(False)):
     raw = await read_image(image)
     # CPU work runs in a worker thread, keeping the event loop responsive.
-    vector = await run_in_threadpool(embedding, raw)
-    return {'success': True, 'face_count': 1, 'embedding': vector.tolist(), 'model': MODEL, 'message': 'Face enrolled'}
+    vector = await run_in_threadpool(embedding, raw, check_quality)
+    return {'success': True, 'face_count': 1, 'embedding': vector.tolist(), 'model': MODEL, 'quality_checked': check_quality, 'message': 'Face enrolled'}
 
 
 @app.post('/face/verify')

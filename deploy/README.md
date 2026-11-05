@@ -14,3 +14,6 @@ Untuk pembaruan beberapa perangkat lihat ../MULTI-DEVICE.md.
 
 Instalasi baru juga memerlukan `2026_11_04_independent_employees.sql` setelah
 `schema-vps.sql`. Lihat ../EMPLOYEES.md. Absensi tidak lagi mengimpor users.
+
+Pendaftaran beberapa contoh juga memerlukan `2026_11_04_face_attendance_samples.sql`.
+Jalankan setelah skema profil dan Data Pegawai tersedia. Lihat ../FACE-SAMPLES.md.
