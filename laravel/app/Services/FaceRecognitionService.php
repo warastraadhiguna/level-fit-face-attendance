@@ -18,7 +18,7 @@ class FaceRecognitionService
         }
         $employees = FaceProfile::with(['samples'=>fn ($q) => $q->where('face_model',config('face.model'))])
             ->whereHas('samples',fn ($q) => $q->where('face_model',config('face.model')))
-            ->whereIn('source_employee_id', \Illuminate\Support\Facades\DB::table('employees')->select('id')->where('branch_store_id',$branchId)->where('is_active',true)->whereNull('deleted_at'))->get();
+            ->whereIn('source_employee_id', \App\Models\Employee::availableInBranch($branchId)->select('id')->where('is_active',true))->get();
         if ($employees->isEmpty()) {
             throw ValidationException::withMessages(['photo' => 'Belum ada wajah pegawai terdaftar di cabang perangkat ini. Daftarkan wajah pada cabang yang sesuai.']);
         }

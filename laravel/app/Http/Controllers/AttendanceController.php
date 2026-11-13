@@ -66,7 +66,7 @@ class AttendanceController extends Controller
                 $activeDevice=DB::table('face_attendance_devices')->where('id',$device->id)
                     ->where('token_hash',$device->token_hash)->where('expires_at','>',now('UTC'))->lockForUpdate()->first();
                 abort_unless($activeDevice,403,'Akses perangkat telah dicabut. Minta Owner mengaktifkan ulang perangkat.');
-                $sourceEmployee=DB::table('employees')->where('id',$employee->source_employee_id)->where('branch_store_id',$device->branch_store_id)->where('is_active',true)->whereNull('deleted_at')->lockForUpdate()->first();
+                $sourceEmployee=\App\Models\Employee::availableInBranch((int)$device->branch_store_id)->where('id',$employee->source_employee_id)->where('is_active',true)->lockForUpdate()->first();
                 abort_unless($sourceEmployee,403,'Pegawai tidak lagi aktif pada cabang perangkat ini.');
                 $sampleExists=DB::table('face_attendance_samples')->where('id',$data['sample_id'])->where('face_profile_id',$employee->id)->where('face_model',config('face.model'))->exists();
                 if (!$sampleExists) throw ValidationException::withMessages(['photo'=>'Contoh wajah telah dihapus saat pemrosesan. Ambil foto dan coba kembali.']);

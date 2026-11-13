@@ -161,6 +161,45 @@ class AttendanceTest extends TestCase
         Http::assertNothingSent();
         $this->assertDatabaseCount('face_attendance_records', 0);
     }
+    public function test_mobile_employee_can_check_in_and_out_at_different_device_branches(): void
+    {
+        Storage::fake('local');$employee=$this->employee();$this->service();
+        \Illuminate\Support\Facades\DB::table('employees')->where('id',$employee->source_employee_id)->update(['all_branch'=>true]);
+        $this->postJson('/attendance',$this->body())->assertOk();
+        $token=str_repeat('b',64);
+        \Illuminate\Support\Facades\DB::table('face_attendance_devices')->insert(['branch_store_id'=>2,'token_hash'=>hash('sha256',$token),'expires_at'=>now('UTC')->addYear()]);
+        $this->withCookie(config('device.cookie'),$token)->postJson('/attendance',$this->body())->assertUnprocessable();
+        $this->postJson('/attendance',$this->body('check_out'))->assertOk()->assertJsonPath('name','Andi');
+        $this->assertDatabaseHas('face_attendance_records',['employee_id'=>$employee->id,'branch_store_id'=>1,'type'=>'check_in']);
+        $this->assertDatabaseHas('face_attendance_records',['employee_id'=>$employee->id,'branch_store_id'=>2,'type'=>'check_out']);
+        $this->assertDatabaseHas('employees',['id'=>$employee->source_employee_id,'branch_store_id'=>1]);
+        $this->assertDatabaseCount('face_attendance_employees',1);
+        $this->assertDatabaseCount('face_attendance_records',2);
+    }
+
+    public function test_mobile_access_revocation_during_inference_prevents_attendance(): void
+    {
+        $employee=$this->employee();
+        \Illuminate\Support\Facades\DB::table('employees')->where('id',$employee->source_employee_id)->update(['branch_store_id'=>2,'all_branch'=>true]);
+        Http::fake(function() {
+            \Illuminate\Support\Facades\DB::table('employees')->update(['all_branch'=>false]);
+            return Http::response(['success'=>true,'face_count'=>1,'embedding'=>$this->vector(),'model'=>config('face.model')]);
+        });
+        $this->postJson('/attendance',$this->body())->assertForbidden();
+        $this->assertDatabaseCount('face_attendance_records',0);
+    }
+
+    public function test_inactive_or_deleted_mobile_employees_cannot_attend(): void
+    {
+        $employee=$this->employee();Http::fake();
+        foreach ([['is_active'=>false,'deleted_at'=>null],['is_active'=>true,'deleted_at'=>now()]] as $flags) {
+            \Illuminate\Support\Facades\DB::table('employees')->where('id',$employee->source_employee_id)->update($flags+['all_branch'=>true,'branch_store_id'=>2]);
+            $this->postJson('/attendance',$this->body())->assertUnprocessable();
+            Http::assertNothingSent();
+        }
+        $this->assertDatabaseCount('face_attendance_records',0);
+    }
+
     public function test_other_branch_and_deleted_employee_cannot_be_recognized(): void
     {
         $employee=$this->employee();$this->service();

@@ -6,6 +6,13 @@ class Employee extends Model
 {
     use SoftDeletes;
 
-    protected $fillable=['employee_code','branch_store_id','full_name','born','position','phone','is_active'];
-    protected $casts=['is_active'=>'boolean','born'=>'date'];
+    protected $fillable=['employee_code','branch_store_id','full_name','born','position','phone','is_active','all_branch'];
+    protected $casts=['is_active'=>'boolean','all_branch'=>'boolean','born'=>'date'];
+
+    public function scopeAvailableInBranch($query, int $branch)
+    {
+        return $query->where(function($scope) use($branch) {
+            $scope->where('branch_store_id',$branch)->orWhere('all_branch',true);
+        });
+    }
 }
