@@ -1,7 +1,17 @@
 'use strict';
 const video=document.querySelector('#video'), employee=document.querySelector('#employee'), capture=document.querySelector('#capture'), photo=document.querySelector('#photo'), statusBadge=document.querySelector('#status'), result=document.querySelector('#result');
 let stream=null, image=null, busy=false;
-function tick(){const now=new Date();document.querySelector('#clock').textContent=new Intl.DateTimeFormat('id-ID',{timeZone:attendanceConfig.timezone,hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false}).format(now);document.querySelector('#today').textContent=new Intl.DateTimeFormat('id-ID',{timeZone:attendanceConfig.timezone,dateStyle:'full'}).format(now);}tick();setInterval(tick,1000);
+function tick(){
+    // Cached Laravel config can predate attendance_timezone. A display-clock
+    // failure must never stop camera initialization or the retry button.
+    try {
+        const now=new Date(), timezone=attendanceConfig.timezone || 'Asia/Jakarta';
+        document.querySelector('#clock').textContent=new Intl.DateTimeFormat('id-ID',{timeZone:timezone,hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false}).format(now);
+        document.querySelector('#today').textContent=new Intl.DateTimeFormat('id-ID',{timeZone:timezone,dateStyle:'full'}).format(now);
+    } catch(error) {
+        document.querySelector('#clock').textContent='--:--:--';
+    }
+}tick();setInterval(tick,1000);
 function update(){if(employee){const enrolled=employee.selectedOptions[0]?.dataset.enrolled==='1';statusBadge.textContent=employee.value?(enrolled?'Wajah sudah terdaftar':'Wajah belum terdaftar'):'Pilih pegawai terlebih dahulu';statusBadge.className='badge '+(employee.value?(enrolled?'text-bg-success':'text-bg-warning'):'text-bg-secondary');employee.disabled=busy;}document.querySelectorAll('.submit').forEach(b=>b.disabled=busy||!image||(attendanceConfig.enroll&&!employee?.value));capture.disabled=busy||!stream||video.readyState<2;}
 function reset(){image=null;photo.classList.add('d-none');photo.removeAttribute('src');document.querySelector('#placeholder').classList.remove('d-none');update();}employee?.addEventListener('change',reset);
 async function camera(){const message=document.querySelector('#cameraMessage');try{if(!navigator.mediaDevices?.getUserMedia)throw Error('Kamera membutuhkan localhost atau HTTPS.');if(stream)stream.getTracks().forEach(t=>t.stop());stream=null;reset();stream=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:'user',width:{ideal:1280},height:{ideal:960}}});video.srcObject=stream;await video.play();message.classList.add('d-none');update();}catch(e){stream=null;message.classList.remove('d-none');message.textContent='Kamera tidak dapat diakses. Izinkan akses kamera, lalu klik Aktifkan Kamera. '+e.message;update();}}
