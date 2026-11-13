@@ -34,7 +34,6 @@ function display(message,ok,data){
         }
         result.append(details);
         const img=document.createElement('img');img.src=data.photo;img.alt='Foto bukti absensi';result.append(img);
-        const refresh=document.createElement('a');refresh.href='/';refresh.className='btn btn-sm btn-success mt-3';refresh.textContent='Lihat riwayat terbaru';result.append(refresh);
     }
     if(!resultDialog.open) resultDialog.showModal();
 }

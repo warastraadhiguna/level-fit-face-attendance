@@ -16,8 +16,7 @@ class AttendanceController extends Controller
     public function index(Request $request)
     {
         $device=$request->attributes->get('attendance_device');
-        return view('attendance', ['enroll'=>false,'employees'=>collect(),'branchName'=>$device->branch_name,
-            'history'=>Attendance::with('employee')->where('branch_store_id',$device->branch_store_id)->latest('attended_at')->limit(10)->get()]);
+        return view('attendance', ['enroll'=>false,'employees'=>collect(),'branchName'=>$device->branch_name]);
     }
 
     public function photo(Request $request, Attendance $attendance)

@@ -262,14 +262,18 @@ class AttendanceTest extends TestCase
         $this->postJson('/attendance',$this->body())->assertForbidden();
         $this->assertDatabaseCount('face_attendance_records',0);
     }
-    public function test_history_and_private_photos_are_limited_to_device_branch(): void
+    public function test_attendance_page_has_no_recent_activity_and_private_photos_remain_branch_scoped(): void
     {
         Storage::fake('local');$employee=$this->employee();$this->service();
         $response=$this->postJson('/attendance',$this->body())->assertOk();
+        foreach (['/','/attendance'] as $url) {
+            $this->get($url)->assertOk()->assertDontSee('Aktivitas terbaru')->assertDontSee('10 absensi terakhir')
+                ->assertDontSee('Andi')->assertDontSee($response->json('photo'),false)->assertViewMissing('history');
+        }
         $this->get($response->json('photo'))->assertOk()->assertHeader('Cache-Control','no-store, private');
         $attendance=Attendance::first();$attendance->update(['branch_store_id'=>2]);
         $this->get($response->json('photo'))->assertNotFound();
-        $this->get('/')->assertOk()->assertSee('Belum ada absensi');
+        $this->get('/')->assertOk()->assertDontSee('Aktivitas terbaru');
     }
     public function test_same_name_and_face_in_two_branches_match_only_the_device_branch_account(): void
     {
