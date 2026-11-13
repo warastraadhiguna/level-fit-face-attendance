@@ -1,3 +1,5 @@
+> Shift, jadwal kerja, izin/cuti, dan rekap: lihat [SHIFT-ATTENDANCE.md](SHIFT-ATTENDANCE.md). SQL deployment tersedia di `deploy/2026_11_14_employee_attendance_management.sql`.
+
 # Face Attendance — MySQL level-fit
 
 > Pendaftaran sekarang mendukung sampai 5 contoh wajah per pegawai dengan pemeriksaan kualitas. Lihat [FACE-SAMPLES.md](FACE-SAMPLES.md) untuk SQL dan deployment. Penjelasan penggantian satu embedding di bawah merupakan perilaku lama.

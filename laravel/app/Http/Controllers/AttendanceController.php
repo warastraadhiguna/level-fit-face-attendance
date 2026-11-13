@@ -72,8 +72,9 @@ class AttendanceController extends Controller
                 if (!$sampleExists) throw ValidationException::withMessages(['photo'=>'Contoh wajah telah dihapus saat pemrosesan. Ambil foto dan coba kembali.']);
                 // Serialize attendance writes for this employee before checking daily rules.
                 DB::table('face_attendance_employees')->where('id', $employee->id)->update(['updated_at' => now()]);
-                $time = now();
-                $this->check($employee, $request->type, $time->toDateString());
+                $time = now(config('face.attendance_timezone'));
+                $context=app(\App\Services\AttendanceShiftService::class)->context((int)$sourceEmployee->id,(int)$employee->id,(int)$device->branch_store_id,$request->type,$time,(bool)$sourceEmployee->all_branch);
+                $this->check($employee, $request->type, $context['attendance_date']);
                 $path = 'attendance/'.$time->format('Y/m/d').'/'.Str::uuid().'.jpg';
                 if (! Storage::disk('local')->put($path, $image)) {
                     throw new \RuntimeException('Photo storage failed');
@@ -81,7 +82,7 @@ class AttendanceController extends Controller
 
                 return Attendance::create(['branch_store_id'=>$device->branch_store_id,'employee_id' => $employee->id, 'type' => $request->type, 'photo_path' => $path,
                     'face_verified' => true, 'face_score' => $data['score'], 'face_distance' => $data['distance'],
-                    'attended_at' => $time, 'attendance_date' => $time->toDateString()]);
+                    'attended_at' => $time] + $context);
             });
         } catch (ValidationException $e) {
             if ($path) {
@@ -100,6 +101,8 @@ class AttendanceController extends Controller
 
         return response()->json(['message' => '✓ ABSENSI BERHASIL', 'name' => $employee->name,
             'type' => $attendance->type === 'check_in' ? 'Masuk' : 'Pulang', 'time' => $attendance->attended_at->format('d M Y H:i:s'),
+            'shift' => $attendance->schedule_id ? $attendance->scheduled_start.' - '.$attendance->scheduled_end : 'Tanpa jadwal',
+            'late_minutes'=>(int)$attendance->late_minutes,'early_leave_minutes'=>(int)$attendance->early_leave_minutes,
             'score' => $attendance->face_score, 'photo' => route('attendance.photo',$attendance)]);
     }
 }

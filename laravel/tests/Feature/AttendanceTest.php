@@ -291,4 +291,72 @@ class AttendanceTest extends TestCase
         $this->assertDatabaseHas('face_attendance_records',['employee_id'=>$supriyadi->id,'branch_store_id'=>2]);
         $this->assertDatabaseCount('face_attendance_records',2);
     }
+
+    private function shift(int $employee, string $date, string $start='06:00:00', string $end='13:00:00', bool $off=false): int
+    {
+        $finish=\Carbon\Carbon::parse($date.' '.$end);
+        if ($end<$start) $finish->addDay();
+        return \Illuminate\Support\Facades\DB::table('employee_shift_schedules')->insertGetId([
+            'employee_id'=>$employee,'branch_store_id'=>1,'work_date'=>$date,'shift_name'=>'Test Shift',
+            'starts_at'=>$off ? null : $date.' '.$start,'ends_at'=>$off ? null : $finish->toDateTimeString(),
+            'grace_minutes'=>5,'is_day_off'=>$off,'created_by'=>7]);
+    }
+    public function test_shift_lateness_early_departure_and_client_values_are_ignored(): void
+    {
+        Storage::fake('local');$e=$this->employee();$this->service();
+        $this->shift($e->source_employee_id,'2026-11-13');
+        $this->travelTo(\Carbon\Carbon::parse('2026-11-13 06:12:00','Asia/Jakarta'));
+        $this->postJson('/attendance',$this->body()+['late_minutes'=>0,'schedule_id'=>999])->assertOk()->assertJsonPath('late_minutes',7);
+        $this->travelTo(\Carbon\Carbon::parse('2026-11-13 12:50:00','Asia/Jakarta'));
+        $this->postJson('/attendance',$this->body('check_out'))->assertOk()->assertJsonPath('early_leave_minutes',10);
+        $this->assertDatabaseHas('face_attendance_records',['type'=>'check_in','late_minutes'=>7,'scheduled_start'=>'2026-11-13 06:00:00']);
+    }
+    public function test_overnight_shift_checkout_uses_previous_work_date(): void
+    {
+        Storage::fake('local');$e=$this->employee();$this->service();$this->shift($e->source_employee_id,'2026-11-13','22:00:00','06:00:00');
+        $this->travelTo(\Carbon\Carbon::parse('2026-11-13 21:55:00','Asia/Jakarta'));
+        $this->postJson('/attendance',$this->body())->assertOk()->assertJsonPath('late_minutes',0);
+        $this->travelTo(\Carbon\Carbon::parse('2026-11-14 06:05:00','Asia/Jakarta'));
+        $this->postJson('/attendance',$this->body('check_out'))->assertOk()->assertJsonPath('early_leave_minutes',0);
+        $this->assertDatabaseHas('face_attendance_records',['type'=>'check_out','attendance_date'=>'2026-11-13']);
+        $this->postJson('/attendance',$this->body('check_out'))->assertUnprocessable();
+    }
+    public function test_approved_leave_day_off_and_outside_shift_window_reject_without_photo(): void
+    {
+        Storage::fake('local');$e=$this->employee();$this->service();$this->shift($e->source_employee_id,'2026-11-13');
+        $this->travelTo(\Carbon\Carbon::parse('2026-11-13 01:00:00','Asia/Jakarta'));
+        $this->postJson('/attendance',$this->body())->assertUnprocessable();
+        $this->travelTo(\Carbon\Carbon::parse('2026-11-13 06:00:00','Asia/Jakarta'));
+        $id=\Illuminate\Support\Facades\DB::table('employee_attendance_leaves')->insertGetId(['employee_id'=>$e->source_employee_id,'branch_store_id'=>1,'type'=>'cuti',
+            'start_date'=>'2026-11-13','end_date'=>'2026-11-13','reason'=>'Cuti','status'=>'approved','created_by'=>7]);
+        $this->postJson('/attendance',$this->body())->assertUnprocessable();
+        \Illuminate\Support\Facades\DB::table('employee_attendance_leaves')->where('id',$id)->update(['status'=>'cancelled']);
+        \Illuminate\Support\Facades\DB::table('employee_shift_schedules')->update(['is_day_off'=>true]);
+        $this->postJson('/attendance',$this->body())->assertUnprocessable();
+        $this->assertDatabaseCount('face_attendance_records',0);$this->assertCount(0,Storage::disk('local')->allFiles());
+    }
+    public function test_pending_leave_does_not_block_attendance_and_unfinished_shift_blocks_new_checkin(): void
+    {
+        Storage::fake('local');$e=$this->employee();$this->service();
+        \Illuminate\Support\Facades\DB::table('employee_attendance_leaves')->insert(['employee_id'=>$e->source_employee_id,'branch_store_id'=>1,'type'=>'izin',
+            'start_date'=>'2026-11-13','end_date'=>'2026-11-14','reason'=>'Pending','status'=>'pending','created_by'=>7]);
+        $this->travelTo(\Carbon\Carbon::parse('2026-11-13 23:00:00','Asia/Jakarta'));
+        $this->postJson('/attendance',$this->body())->assertOk();
+        $this->travelTo(\Carbon\Carbon::parse('2026-11-14 01:00:00','Asia/Jakarta'));
+        $this->postJson('/attendance',$this->body())->assertUnprocessable();
+        $this->postJson('/attendance',$this->body('check_out'))->assertOk();
+        $this->assertDatabaseHas('face_attendance_records',['type'=>'check_out','attendance_date'=>'2026-11-13']);
+    }
+
+    public function test_mobile_employee_uses_assigned_shift_while_attending_another_branch(): void
+    {
+        Storage::fake('local');$e=$this->employee();$this->service();
+        \Illuminate\Support\Facades\DB::table('employees')->where('id',$e->source_employee_id)->update(['all_branch'=>true]);
+        $this->shift($e->source_employee_id,'2026-11-13');
+        $token=str_repeat('b',64);
+        \Illuminate\Support\Facades\DB::table('face_attendance_devices')->insert(['branch_store_id'=>2,'token_hash'=>hash('sha256',$token),'expires_at'=>now('UTC')->addYear()]);
+        $this->travelTo(\Carbon\Carbon::parse('2026-11-13 06:12:00','Asia/Jakarta'));
+        $this->withCookie(config('device.cookie'),$token)->postJson('/attendance',$this->body())->assertOk()->assertJsonPath('late_minutes',7);
+        $this->assertDatabaseHas('face_attendance_records',['branch_store_id'=>2,'schedule_id'=>1,'late_minutes'=>7]);
+    }
 }
