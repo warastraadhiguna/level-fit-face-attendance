@@ -14,18 +14,18 @@ class FaceRecognitionService
         $threshold = config('face.recognition_threshold');
         $margin = config('face.recognition_margin');
         if (! is_finite($threshold) || $threshold <= 0 || $threshold > 1 || ! is_finite($margin) || $margin <= 0 || $margin > 2) {
-            throw ValidationException::withMessages(['photo' => 'Konfigurasi pengenalan wajah tidak valid.']);
+            throw ValidationException::withMessages(['photo' => 'Absensi belum dapat diproses. Silakan hubungi pengelola.']);
         }
         $employees = FaceProfile::with(['samples'=>fn ($q) => $q->where('face_model',config('face.model'))])
             ->whereHas('samples',fn ($q) => $q->where('face_model',config('face.model')))
             ->whereIn('source_employee_id', \App\Models\Employee::availableInBranch($branchId)->select('id')->where('is_active',true))->get();
         if ($employees->isEmpty()) {
-            throw ValidationException::withMessages(['photo' => 'Belum ada wajah pegawai terdaftar di cabang perangkat ini. Daftarkan wajah pada cabang yang sesuai.']);
+            throw ValidationException::withMessages(['photo' => 'Wajah belum dikenali. Hubungi pengelola untuk memeriksa pendaftaran wajah.']);
         }
         $probe = $this->faces->process('enroll', $image)['embedding'];
         $probeNorm = sqrt(array_sum(array_map(fn ($v) => $v * $v, $probe)));
         if ($probeNorm <= 0 || ! is_finite($probeNorm)) {
-            throw ValidationException::withMessages(['photo' => 'Embedding wajah tidak valid.']);
+            throw ValidationException::withMessages(['photo' => 'Foto belum dapat diproses. Silakan ambil foto ulang.']);
         }
         $ranked = [];
         foreach ($employees as $employee) {
@@ -51,7 +51,7 @@ class FaceRecognitionService
             throw ValidationException::withMessages(['photo' => '✕ WAJAH TIDAK DIKENALI DI CABANG INI — absensi tidak disimpan.']);
         }
         if (isset($ranked[1]) && config('face.recognition_margin') > $best['score'] - $ranked[1]['score']) {
-            throw ValidationException::withMessages(['photo' => '✕ IDENTITAS AMBIGU — wajah mirip dengan lebih dari satu pegawai. Ambil foto ulang atau periksa enrollment.']);
+            throw ValidationException::withMessages(['photo' => '✕ IDENTITAS AMBIGU — Ambil foto ulang atau hubungi pengelola.']);
         }
 
         return $best;

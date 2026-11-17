@@ -39,7 +39,7 @@ function display(message,ok,data){
     const title=document.createElement('h2');title.id='resultTitle';title.className='h5 fw-bold mt-3 mb-0';title.textContent=message;result.append(title);
     if(data?.name){
         const details=document.createElement('div');details.className='result-details mt-3';
-        for(const line of [data.name,'Jenis: '+data.type,'Waktu: '+data.time,'Shift: '+data.shift,'Terlambat: '+data.late_minutes+' menit','Pulang awal: '+data.early_leave_minutes+' menit','Face Match Score: '+Number(data.score).toFixed(3)]){
+        for(const line of [data.name,'Jenis: '+data.type,'Waktu: '+data.time,'Shift: '+data.shift,'Terlambat: '+data.late_minutes+' menit','Pulang awal: '+data.early_leave_minutes+' menit']){
             const item=document.createElement('div');item.textContent=line;details.append(item);
         }
         result.append(details);

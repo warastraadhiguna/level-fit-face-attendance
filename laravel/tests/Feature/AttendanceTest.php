@@ -58,7 +58,7 @@ class AttendanceTest extends TestCase
         $this->employee('EMP002', 1);
         $this->service();
         $this->travelTo(now()->setTime(9, 0));
-        $this->postJson('/attendance', $this->body() + ['attended_at' => '1999-01-01'])->assertOk()->assertJsonPath('name', 'Andi');
+        $this->postJson('/attendance', $this->body() + ['attended_at' => '1999-01-01'])->assertOk()->assertJsonPath('name', 'Andi')->assertJsonMissingPath('score');
         $a = Attendance::first();
         $this->assertEquals($e->id, $a->employee_id);
         $this->assertEquals(now()->toDateTimeString(), $a->attended_at->toDateTimeString());
@@ -268,7 +268,7 @@ class AttendanceTest extends TestCase
         $response=$this->postJson('/attendance',$this->body())->assertOk();
         foreach (['/','/attendance'] as $url) {
             $this->get($url)->assertOk()->assertDontSee('Aktivitas terbaru')->assertDontSee('10 absensi terakhir')
-                ->assertDontSee('Andi')->assertDontSee($response->json('photo'),false)->assertViewMissing('history');
+                ->assertDontSee('Andi')->assertDontSee('anti-spoofing')->assertDontSee($response->json('photo'),false)->assertViewMissing('history');
         }
         $this->get($response->json('photo'))->assertOk()->assertHeader('Cache-Control','no-store, private');
         $attendance=Attendance::first();$attendance->update(['branch_store_id'=>2]);

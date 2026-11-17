@@ -102,6 +102,6 @@ class AttendanceController extends Controller
             'type' => $attendance->type === 'check_in' ? 'Masuk' : 'Pulang', 'time' => $attendance->attended_at->format('d M Y H:i:s'),
             'shift' => $attendance->schedule_id ? $attendance->scheduled_start.' - '.$attendance->scheduled_end : 'Tanpa jadwal',
             'late_minutes'=>(int)$attendance->late_minutes,'early_leave_minutes'=>(int)$attendance->early_leave_minutes,
-            'score' => $attendance->face_score, 'photo' => route('attendance.photo',$attendance)]);
+            'photo' => route('attendance.photo',$attendance)]);
     }
 }
