@@ -15,7 +15,7 @@ class FaceVerificationService
             $response = Http::connectTimeout(3)->timeout(config('face.timeout'))->acceptJson()
                 ->attach('image', $image, 'capture.jpg')
                 ->post(rtrim(config('face.url'), '/').'/face/'.$action,
-                    $embedding === null ? [] : ['reference_embedding' => json_encode($embedding)]);
+                    $embedding === null ? ['check_quality'=>'true'] : ['reference_embedding' => json_encode($embedding)]);
         } catch (ConnectionException $e) {
             report($e);
             throw ValidationException::withMessages(['photo' => 'Verifikasi wajah belum dapat diproses. Silakan coba kembali.']);
@@ -37,6 +37,7 @@ class FaceVerificationService
         }
         $valid = ($data['face_count'] ?? null) === 1 && ($data['model'] ?? null) === config('face.model');
         if ($action === 'enroll') {
+            $valid = $valid && ($data['quality_checked'] ?? false) === true;
             $vector = $data['embedding'] ?? null;
             $valid = $valid && is_array($vector) && array_is_list($vector) && count($vector) === 128;
             foreach (is_array($vector) ? $vector : [] as $v) {

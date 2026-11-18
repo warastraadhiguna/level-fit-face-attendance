@@ -1,6 +1,6 @@
 'use strict';
 const video=document.querySelector('#video'), employee=document.querySelector('#employee'), capture=document.querySelector('#capture'), photo=document.querySelector('#photo'), statusBadge=document.querySelector('#status'), result=document.querySelector('#result');
-let stream=null, image=null, busy=false;
+let stream=null, image=null, images=[], busy=false;
 function tick(){
     // Cached Laravel config can predate attendance_timezone. A display-clock
     // failure must never stop camera initialization or the retry button.
@@ -12,8 +12,13 @@ function tick(){
         document.querySelector('#clock').textContent='--:--:--';
     }
 }tick();setInterval(tick,1000);
-function update(){if(employee){const enrolled=employee.selectedOptions[0]?.dataset.enrolled==='1';statusBadge.textContent=employee.value?(enrolled?'Wajah sudah terdaftar':'Wajah belum terdaftar'):'Pilih pegawai terlebih dahulu';statusBadge.className='badge '+(employee.value?(enrolled?'text-bg-success':'text-bg-warning'):'text-bg-secondary');employee.disabled=busy;}document.querySelectorAll('.submit').forEach(b=>b.disabled=busy||!image||(attendanceConfig.enroll&&!employee?.value));capture.disabled=busy||!stream||video.readyState<2;}
-function reset(){image=null;photo.classList.add('d-none');photo.removeAttribute('src');document.querySelector('#placeholder').classList.remove('d-none');update();}employee?.addEventListener('change',reset);
+function update(){
+    if(employee){const enrolled=employee.selectedOptions[0]?.dataset.enrolled==='1';statusBadge.textContent=employee.value?(enrolled?'Wajah sudah terdaftar':'Wajah belum terdaftar'):'Pilih pegawai terlebih dahulu';statusBadge.className='badge '+(employee.value?(enrolled?'text-bg-success':'text-bg-warning'):'text-bg-secondary');employee.disabled=busy;}
+    document.querySelectorAll('.submit').forEach(b=>b.disabled=busy||!image||images.length!==3||(attendanceConfig.enroll&&!employee?.value));
+    capture.disabled=busy||!stream||video.readyState<2;
+    document.querySelector('#retry').disabled=busy;
+}
+function reset(){image=null;images=[];photo.classList.add('d-none');photo.removeAttribute('src');document.querySelector('#placeholder').classList.remove('d-none');update();}employee?.addEventListener('change',reset);
 async function camera(){const message=document.querySelector('#cameraMessage');try{if(!navigator.mediaDevices?.getUserMedia)throw Error('Kamera membutuhkan localhost atau HTTPS.');if(stream)stream.getTracks().forEach(t=>t.stop());stream=null;reset();stream=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:'user',width:{ideal:1280},height:{ideal:960}}});video.srcObject=stream;await video.play();message.classList.add('d-none');update();}catch(e){stream=null;message.classList.remove('d-none');message.textContent='Kamera tidak dapat diakses. Izinkan akses kamera, lalu klik Aktifkan Kamera. '+e.message;update();}}
 video.addEventListener('loadeddata',update);document.querySelector('#retry').addEventListener('click',camera);
 function showCapturedPhoto(){
@@ -25,7 +30,25 @@ function showCapturedPhoto(){
         block:'start'
     }));
 }
-capture.addEventListener('click',()=>{if(!video.videoWidth)return;const canvas=document.createElement('canvas');const scale=Math.min(1,1280/video.videoWidth);canvas.width=Math.round(video.videoWidth*scale);canvas.height=Math.round(video.videoHeight*scale);canvas.getContext('2d').drawImage(video,0,0,canvas.width,canvas.height);image=canvas.toDataURL('image/jpeg',0.9);photo.src=image;photo.classList.remove('d-none');document.querySelector('#placeholder').classList.add('d-none');result.replaceChildren();update();photo.decode().catch(()=>{}).then(showCapturedPhoto);});
+capture.addEventListener('click',async()=>{
+    if(busy||!stream||!video.videoWidth)return;
+    busy=true;reset();const label=capture.textContent;
+    try {
+        for(let i=0;i<3;i++){
+            if(i)await new Promise(resolve=>setTimeout(resolve,300));
+            if(!stream||video.readyState<2||!video.videoWidth)throw Error('Kamera terputus. Aktifkan kamera lalu ambil foto ulang.');
+            capture.textContent='Tahan posisi wajah ('+(i+1)+'/3)';
+            const canvas=document.createElement('canvas'), scale=Math.min(1,960/video.videoWidth);
+            canvas.width=Math.round(video.videoWidth*scale);canvas.height=Math.round(video.videoHeight*scale);
+            canvas.getContext('2d').drawImage(video,0,0,canvas.width,canvas.height);
+            images.push(canvas.toDataURL('image/jpeg',0.85));
+        }
+        image=images[0];photo.src=image;photo.classList.remove('d-none');
+        document.querySelector('#placeholder').classList.add('d-none');result.replaceChildren();
+        photo.decode().catch(()=>{}).then(showCapturedPhoto);
+    }catch(error){reset();display(error.message,false);}
+    finally{busy=false;capture.textContent=label;update();}
+});
 const resultDialog=document.querySelector('#resultDialog');
 resultDialog.addEventListener('click',event=>{
     const bounds=resultDialog.getBoundingClientRect();
@@ -47,5 +70,5 @@ function display(message,ok,data){
     }
     if(!resultDialog.open) resultDialog.showModal();
 }
-document.querySelectorAll('.submit').forEach(button=>button.addEventListener('click',async()=>{if(busy)return;busy=true;update();const label=button.textContent;button.textContent=attendanceConfig.enroll?'Mendaftarkan…':'Mengenali wajah…';try{const response=await fetch(attendanceConfig.enroll?'/enroll':'/attendance',{method:'POST',headers:{'Content-Type':'application/json','Accept':'application/json','X-CSRF-TOKEN':document.querySelector('meta[name="csrf-token"]').content},body:JSON.stringify({...(attendanceConfig.enroll?{employee_id:employee.value}: {}),photo:image,type:button.dataset.action})});const data=await response.json();if(!response.ok)throw Error(data.errors?Object.values(data.errors).flat().join(' '):data.message||'Permintaan gagal.');display(data.message,true,data);if(attendanceConfig.enroll)employee.selectedOptions[0].dataset.enrolled='1';reset();}catch(e){display(e.message,false);}finally{busy=false;button.textContent=label;update();}}));
+document.querySelectorAll('.submit').forEach(button=>button.addEventListener('click',async()=>{if(busy||!image||images.length!==3)return;busy=true;update();const label=button.textContent;button.textContent=attendanceConfig.enroll?'Mendaftarkan…':'Mengenali wajah…';try{const response=await fetch(attendanceConfig.enroll?'/enroll':'/attendance',{method:'POST',headers:{'Content-Type':'application/json','Accept':'application/json','X-CSRF-TOKEN':document.querySelector('meta[name="csrf-token"]').content},body:JSON.stringify({...(attendanceConfig.enroll?{employee_id:employee.value}: {}),photo:image,photos:images,type:button.dataset.action})});const data=await response.json();if(!response.ok)throw Error(data.errors?Object.values(data.errors).flat().join(' '):data.message||'Permintaan gagal.');display(data.message,true,data);if(attendanceConfig.enroll)employee.selectedOptions[0].dataset.enrolled='1';reset();}catch(e){reset();display(e.message,false);}finally{busy=false;button.textContent=label;update();}}));
 window.addEventListener('pagehide',()=>stream?.getTracks().forEach(t=>t.stop()));camera();

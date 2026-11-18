@@ -43,12 +43,14 @@ class AttendanceTest extends TestCase
 
     private function body(string $type = 'check_in'): array
     {
-        return ['type' => $type, 'photo' => 'data:image/jpeg;base64,'.base64_encode(file_get_contents(base_path('tests/Fixtures/capture.jpg')))];
+        $jpeg=file_get_contents(base_path('tests/Fixtures/capture.jpg'));
+        $photos=array_map(fn ($i) => 'data:image/jpeg;base64,'.base64_encode($jpeg."\nfixture-frame-".$i),[1,2,3]);
+        return ['type'=>$type,'photo'=>$photos[0],'photos'=>$photos];
     }
 
     private function service(int $axis = 0): void
     {
-        Http::fake(['*/face/enroll' => Http::response(['success' => true, 'face_count' => 1, 'embedding' => $this->vector($axis), 'model' => 'opencv-sface-2021dec'])]);
+        Http::fake(['*/face/enroll' => Http::response(['success' => true, 'quality_checked'=>true, 'face_count' => 1, 'embedding' => $this->vector($axis), 'model' => 'opencv-sface-2021dec'])]);
     }
 
     public function test_identifies_without_employee_id_and_saves_server_time_and_photo(): void
@@ -83,6 +85,71 @@ class AttendanceTest extends TestCase
         $this->postJson('/attendance', $this->body())->assertStatus(422);
         $this->assertDatabaseCount('face_attendance_records', 0);
         $this->assertCount(0, Storage::disk('local')->allFiles());
+    }
+
+    public function test_all_three_captures_must_identify_the_same_employee(): void
+    {
+        Storage::fake('local');$this->employee();$this->employee('EMP002',1);
+        $sequence=Http::sequence();
+        foreach ([0,1,0] as $axis) $sequence->push(['success'=>true,'quality_checked'=>true,'face_count'=>1,
+            'embedding'=>$this->vector($axis),'model'=>config('face.model')]);
+        Http::fake(['*/face/enroll'=>$sequence]);
+        $this->postJson('/attendance',$this->body())->assertUnprocessable()->assertJsonValidationErrors('photo');
+        $this->assertDatabaseCount('face_attendance_records',0);
+        $this->assertCount(0,Storage::disk('local')->allFiles());
+    }
+
+    public function test_two_matching_identities_are_rejected_even_with_a_large_score_gap(): void
+    {
+        $this->employee();$other=$this->employee('EMP002',1);
+        $reference=$this->vector();$reference[0]=0.6;$reference[1]=0.8;
+        \App\Models\FaceSample::where('face_profile_id',$other->id)->update(['face_embedding'=>json_encode($reference)]);
+        $this->service();
+        $this->postJson('/attendance',$this->body())->assertUnprocessable();
+        $this->assertDatabaseCount('face_attendance_records',0);
+    }
+
+    public function test_majority_of_samples_can_identify_despite_one_bad_sample(): void
+    {
+        Storage::fake('local');$employee=$this->employee('EMP001',1);
+        foreach ([2,3] as $slot) \App\Models\FaceSample::create(['face_profile_id'=>$employee->id,'slot'=>$slot,
+            'pose'=>'front','face_embedding'=>$this->vector(),'face_model'=>config('face.model')]);
+        $this->service();
+        $this->postJson('/attendance',$this->body())->assertOk()->assertJsonPath('name','Andi');
+        Http::assertSentCount(3);
+        Http::assertSent(fn ($request) => str_contains($request->body(), 'name="check_quality"')
+            && str_contains($request->body(), "\r\n\r\ntrue\r\n"));
+    }
+
+    public function test_single_duplicate_or_invalid_capture_cannot_bypass_burst_check(): void
+    {
+        $this->employee();Http::fake();
+        $single=$this->body();unset($single['photos']);
+        $this->postJson('/attendance',$single)->assertUnprocessable()->assertJsonValidationErrors('photos');
+        $body=$this->body();$body['photos']=array_fill(0,3,$body['photo']);
+        $this->postJson('/attendance',$body)->assertUnprocessable();
+        $body=$this->body();$body['photos'][2]='invalid';
+        $this->postJson('/attendance',$body)->assertUnprocessable();
+        Http::assertNothingSent();$this->assertDatabaseCount('face_attendance_records',0);
+    }
+
+    public function test_one_bad_quality_capture_rejects_the_whole_attempt(): void
+    {
+        $this->employee();
+        Http::fake(['*/face/enroll'=>Http::sequence()->push(['success'=>true,'quality_checked'=>true,
+            'face_count'=>1,'embedding'=>$this->vector(),'model'=>config('face.model')])
+            ->push(['success'=>false,'code'=>'face_blurry'],422)]);
+        $this->postJson('/attendance',$this->body())->assertUnprocessable()->assertJsonValidationErrors('photo');
+        $this->assertDatabaseCount('face_attendance_records',0);
+    }
+
+    public function test_missing_quality_capability_fails_closed(): void
+    {
+        $this->employee();
+        Http::fake(['*/face/enroll'=>Http::response(['success'=>true,'face_count'=>1,
+            'embedding'=>$this->vector(),'model'=>config('face.model')])]);
+        $this->postJson('/attendance',$this->body())->assertUnprocessable();
+        $this->assertDatabaseCount('face_attendance_records',0);
     }
 
     public function test_ambiguous_face_never_saves(): void
@@ -183,7 +250,7 @@ class AttendanceTest extends TestCase
         \Illuminate\Support\Facades\DB::table('employees')->where('id',$employee->source_employee_id)->update(['branch_store_id'=>2,'all_branch'=>true]);
         Http::fake(function() {
             \Illuminate\Support\Facades\DB::table('employees')->update(['all_branch'=>false]);
-            return Http::response(['success'=>true,'face_count'=>1,'embedding'=>$this->vector(),'model'=>config('face.model')]);
+            return Http::response(['success'=>true,'quality_checked'=>true,'face_count'=>1,'embedding'=>$this->vector(),'model'=>config('face.model')]);
         });
         $this->postJson('/attendance',$this->body())->assertForbidden();
         $this->assertDatabaseCount('face_attendance_records',0);
@@ -224,7 +291,7 @@ class AttendanceTest extends TestCase
         $this->employee();
         Http::fake(function() {
             \Illuminate\Support\Facades\DB::table('employees')->update(['is_active'=>false]);
-            return Http::response(['success'=>true,'face_count'=>1,'embedding'=>$this->vector(),'model'=>config('face.model')]);
+            return Http::response(['success'=>true,'quality_checked'=>true,'face_count'=>1,'embedding'=>$this->vector(),'model'=>config('face.model')]);
         });
         $this->postJson('/attendance',$this->body())->assertForbidden();
         $this->assertDatabaseCount('face_attendance_records',0);
@@ -236,18 +303,19 @@ class AttendanceTest extends TestCase
         $this->employee('OTHER',1);$this->service();
         $this->postJson('/attendance',$this->body())->assertOk()->assertJsonPath('name','Andi');
     }
-    public function test_alternative_sample_is_matched_even_if_primary_does_not_match(): void
+    public function test_one_outlier_sample_cannot_decide_identity(): void
     {
         Storage::fake('local');$employee=$this->employee('EMP001',1);
         \App\Models\FaceSample::create(['face_profile_id'=>$employee->id,'slot'=>2,'pose'=>'right','face_embedding'=>$this->vector(),'face_model'=>config('face.model')]);
-        $this->service();$this->postJson('/attendance',$this->body())->assertOk()->assertJsonPath('name','Andi');
+        $this->service();$this->postJson('/attendance',$this->body())->assertUnprocessable();
+        $this->assertDatabaseCount('face_attendance_records',0);
     }
     public function test_deleting_matching_sample_during_inference_prevents_attendance(): void
     {
         $this->employee();
         Http::fake(function() {
             \Illuminate\Support\Facades\DB::table('face_attendance_samples')->delete();
-            return Http::response(['success'=>true,'face_count'=>1,'embedding'=>$this->vector(),'model'=>config('face.model')]);
+            return Http::response(['success'=>true,'quality_checked'=>true,'face_count'=>1,'embedding'=>$this->vector(),'model'=>config('face.model')]);
         });
         $this->postJson('/attendance',$this->body())->assertStatus(422);
         $this->assertDatabaseCount('face_attendance_records',0);
@@ -257,7 +325,7 @@ class AttendanceTest extends TestCase
         $this->employee();
         Http::fake(function() {
             \Illuminate\Support\Facades\DB::table('face_attendance_devices')->update(['token_hash'=>null]);
-            return Http::response(['success'=>true,'face_count'=>1,'embedding'=>$this->vector(),'model'=>'opencv-sface-2021dec']);
+            return Http::response(['success'=>true,'quality_checked'=>true,'face_count'=>1,'embedding'=>$this->vector(),'model'=>'opencv-sface-2021dec']);
         });
         $this->postJson('/attendance',$this->body())->assertForbidden();
         $this->assertDatabaseCount('face_attendance_records',0);

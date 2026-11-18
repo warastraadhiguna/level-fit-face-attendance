@@ -26,10 +26,9 @@ class AttendanceController extends Controller
         return Storage::disk('local')->response($attendance->photo_path,null,['Cache-Control'=>'no-store, private']);
     }
 
-    private function capture(Request $request): string
+    private function capture(string $photo): string
     {
-        $request->validate(['photo' => 'required|string|max:7000000']);
-        if (! preg_match('#^data:image/jpeg;base64,([A-Za-z0-9+/=]+)$#D', $request->photo, $matches)) {
+        if (! preg_match('#^data:image/jpeg;base64,([A-Za-z0-9+/=]+)$#D', $photo, $matches)) {
             throw ValidationException::withMessages(['photo' => 'Ambil foto melalui kamera.']);
         }
         $bytes = base64_decode($matches[1], true);
@@ -54,10 +53,25 @@ class AttendanceController extends Controller
 
     public function attend(Request $request, FaceRecognitionService $service)
     {
-        $request->validate(['type' => 'required|in:check_in,check_out']);
-        $image = $this->capture($request);
+        $request->validate(['type' => 'required|in:check_in,check_out',
+            'photo'=>'required|string|max:7000000','photos'=>'required|array|size:3',
+            'photos.*'=>'required|string|max:7000000'],[
+                'photos.required'=>'Muat ulang halaman absensi lalu ambil foto kembali.',
+                'photos.size'=>'Ambil ulang foto untuk pemeriksaan wajah berurutan.',
+            ]);
+        if ($request->photo !== $request->photos[0]) {
+            throw ValidationException::withMessages(['photo'=>'Ambil ulang foto melalui kamera.']);
+        }
+        $images = array_map(fn ($photo) => $this->capture($photo), $request->photos);
+        if (count(array_unique(array_map(fn ($image) => hash('sha256',$image),$images))) !== 3) {
+            throw ValidationException::withMessages(['photo'=>'Foto berurutan belum lengkap. Gerakkan wajah sedikit lalu ambil foto ulang.']);
+        }
+        if (array_sum(array_map('strlen',$images)) > 6 * 1024 * 1024) {
+            throw ValidationException::withMessages(['photo'=>'Foto terlalu besar. Ambil ulang foto melalui kamera.']);
+        }
+        $image = $images[0];
         $device = $request->attributes->get('attendance_device');
-        $data = $service->identify($image, (int)$device->branch_store_id);
+        $data = $service->identify($images, (int)$device->branch_store_id);
         $employee = $data['employee'];
         $path = null;
         try {
@@ -67,8 +81,10 @@ class AttendanceController extends Controller
                 abort_unless($activeDevice,403,'Akses perangkat telah dicabut. Minta Owner mengaktifkan ulang perangkat.');
                 $sourceEmployee=\App\Models\Employee::availableInBranch((int)$device->branch_store_id)->where('id',$employee->source_employee_id)->where('is_active',true)->lockForUpdate()->first();
                 abort_unless($sourceEmployee,403,'Pegawai tidak lagi aktif pada cabang perangkat ini.');
-                $sampleExists=DB::table('face_attendance_samples')->where('id',$data['sample_id'])->where('face_profile_id',$employee->id)->where('face_model',config('face.model'))->exists();
-                if (!$sampleExists) throw ValidationException::withMessages(['photo'=>'Contoh wajah telah dihapus saat pemrosesan. Ambil foto dan coba kembali.']);
+                $snapshot=DB::table('face_attendance_samples')->where('face_profile_id',$employee->id)
+                    ->where('face_model',config('face.model'))->orderBy('id')->lockForUpdate()->get()
+                    ->mapWithKeys(fn ($sample) => [$sample->id => hash('sha256',$sample->face_model.'|'.$sample->face_embedding)])->all();
+                if ($snapshot !== $data['sample_snapshot']) throw ValidationException::withMessages(['photo'=>'Pendaftaran wajah berubah saat pemrosesan. Ambil foto dan coba kembali.']);
                 // Serialize attendance writes for this employee before checking daily rules.
                 DB::table('face_attendance_employees')->where('id', $employee->id)->update(['updated_at' => now()]);
                 $time = now(config('face.attendance_timezone'));
